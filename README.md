@@ -23,8 +23,8 @@ El repositorio está compuesto por un archivo de Rmd (R markdown), usado para la
 
 - El archivos de R, disponibles en formato `.Rmd`, contienen los procedimientos usados para la limpieza de los datos y para replicar los resultados y el análisis presentados en el informe final y la presentación (`proyecto4.R`).
 - El archivo Word contiene el informe final (`Proyecto 4 - Miguel y Esteban.docx`)
-- El archivo PowerPoint con la presentacion final (`Ppresentacion.pptx`)
-- El video con la presentacion final (`https://youtu.be/QKVhdO-qxw8`)
+- El archivo PowerPoint con la presentacion final (`Presentacion.pptx`)
+- El video con la presentacion final (`[](https://youtu.be/QKVhdO-qxw8)`)
 - La carpeta `datos` contiene los datos usados en el artículo. 
 
 ## Datos
