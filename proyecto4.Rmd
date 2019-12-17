@@ -1,0 +1,432 @@
+---
+title: "Protecto 4 - Estadística de áreas"
+author: "Miguel Coto y Esteban Vargas"
+output:
+  html_document:
+    df_print: paged
+---
+
+- [Bibliotecas](#bibliotecas)
+- [Leyendo archivo shapefile](#leyendo-archivo-shapefile)
+- [Explorando datos](#explorando-datos)
+  * [Mapa usando leaflet](#mapa-usando-leaflet)
+- [Econometria espacial](#econometria-espacial)
+  * [Regresión por mínimos cuadrados ordinarios](#regresi-n-por-m-nimos-cuadrados-ordinarios)
+  * [Modelando la dependencia espacial](#modelando-la-dependencia-espacial)
+  * [Modelos espaciales autoregresivos (SAR)](#modelos-espaciales-autoregresivos--sar-)
+  * [Modelos de errores espaciales (SEM)](#modelos-de-errores-espaciales--sem-)
+- [Probando la correlación espacial](#probando-la-correlaci-n-espacial)
+  * [Test I de Moran](#test-i-de-moran)
+  * [Prueba de Multiplicadores de Lagrange](#prueba-de-multiplicadores-de-lagrange)
+- [Regresiones espaciales](#regresiones-espaciales)
+  * [Modelo SAR](#modelo-sar)
+    + [Efectos marginales](#efectos-marginales)
+  * [Modelos SEM](#modelos-sem)
+
+
+
+# Bibliotecas
+```{r include=FALSE, results=T}
+library(spdep)
+library(maptools)
+library(leaflet)
+require(RColorBrewer)
+library(dplyr)
+```
+
+# Leyendo archivo shapefile
+```{r,warning = F}
+setwd("C:/Users/Esteban Vargas P/Desktop/Esteban/UCR/Estadística/Posgrado/5-ESTADISTICA ESPACIAL/PROYECTO 3/boston2/datos")
+
+bos.poly <- rgdal::readOGR("/Users/Esteban Vargas P/Desktop/Esteban/UCR/Estadística/Posgrado/5-ESTADISTICA ESPACIAL/PROYECTO 3/boston2/datos/boston.shp")
+
+class(bos.poly)
+
+bos.poly<- bos.poly[bos.poly$FID!="151",]
+bos.poly<- bos.poly[bos.poly$FID!="62",]
+
+bos.poly@data$POP100_RE <- as.numeric(bos.poly@data$POP100_RE)
+bos.poly@data$HU100_RE <- as.numeric(bos.poly@data$HU100_RE)
+bos.poly@data$TotDis <- as.numeric(bos.poly@data$TotDis)
+bos.poly@data$TotChild <- as.numeric(bos.poly@data$TotChild)
+bos.poly@data$OlderAdult <- as.numeric(bos.poly@data$OlderAdult)
+bos.poly@data$Low_to_No <- as.numeric(bos.poly@data$Low_to_No)
+bos.poly@data$LEP <- as.numeric(bos.poly@data$LEP)
+bos.poly@data$POC2 <- as.numeric(bos.poly@data$POC2)
+#bos.poly@data$poverty <- (bos.poly@data$Low_to_No/bos.poly@data$POP100_RE)
+
+```
+
+```{r,warning = F}
+
+crimes <- read.csv("/Users/Esteban Vargas P/Desktop/Esteban/UCR/Estadística/Posgrado/5-ESTADISTICA ESPACIAL/PROYECTO 3/boston2/datos/crimes.csv")
+
+crimes2 <- crimes %>% 
+  group_by(Long, Lat) %>% 
+  filter(!is.null(Lat)) %>%
+  filter(Lat!=-1) %>% 
+  summarise(n=n())
+
+#crimes2 <- coordinates(crimes2, )
+coordinates(crimes2) <- ~Long+Lat
+
+proj4string(crimes2) <- CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
+
+crimes3 <- over(x=crimes2, y=bos.poly)
+
+crimes3 <- crimes3 %>% 
+  group_by_all() %>%
+  summarise(crimes=n()) %>% 
+  filter(!is.na(FID)) %>% 
+  ungroup() %>% 
+  select(c(FID, crimes))
+
+
+bos.poly <- tmaptools::append_data(bos.poly, crimes3, key.shp = "FID", key.data = "FID")
+
+str(slot(bos.poly,"data"))
+
+```
+
+
+
+
+# Explorando datos
+
+   - **name:** nombre del barrio en Boston.
+    - **crimes:** número total de crimenes.
+    - **Low_to_No:** personas con ingreso bajo o nulo. Los datos representan un campo calculado que combina personas que estaban 100% por debajo del nivel de pobreza y aquellas que estaban entre 100 y 149% del nivel de pobreza.
+   - **TotDis:** personas con discapacidad. Población total, que incluye: dificultad auditiva, dificultad para la visión, dificultad cognitiva, dificultad ambulatoria, dificultad para el autocuidado y dificultad para vivir de forma independiente.
+   - **TotChild:** Cantidad de niños. Población menor a 5 años.
+   - **OlderAdult:** Cantidad de adultos mayores. Población mayor a 65 años.
+   - **LEP:** Dominio limitado de inglés. Población con manejo limitado de inglés.
+   - **POC2:** Cantidad de población de color. Hispanos, negros, nativos americanos, asiáticos, isleños, hispanos no blancos..
+   - **MedIllnes:** Cantidad de personas con enfermedades. La enfermedad médica es la suma de asma en niños, asma en adultos, enfermedad cardíaca, enfisema, bronquitis, cáncer, diabetes, enfermedad renal y enfermedad hepática.
+  
+  
+```{r}
+summary(bos.poly@data$crimes)
+
+plot(bos.poly)
+
+```
+
+## Mapa usando leaflet
+```{r}
+leaflet(bos.poly) %>%
+  addPolygons(stroke = FALSE, fillOpacity = 0.5, smoothFactor = 0.5) %>%
+  addTiles()
+```
+
+Mapa agregando color según crímenes
+```{r}
+qpal<-colorQuantile("OrRd", bos.poly@data$crimes, n=9) 
+
+leaflet(bos.poly) %>%
+  addPolygons(stroke = FALSE, fillOpacity = .8, smoothFactor = 0.2, color = ~qpal(crimes)
+  ) %>%
+  addTiles()
+```
+
+
+El nivel de ingreso parece estar distribuido de manera aleatoria según las ciudades de Boston.
+
+### Exploración de variables candidatas al modelo
+
+```{r}
+
+bos.poly@data %>% 
+  select(c(crimes,Low_to_No,TotChild,TotDis,OlderAdult,POC2,LEP,MedIllnes,POP100_RE)) %>% cor() %>% 
+  corrplot::corrplot()
+
+```
+
+
+
+
+## Regresión por mínimos cuadrados ordinarios
+
+Tradicionalmente, estos problemas se modelan dejando de lado el elemento espacial usando técnicas como la regresión lineal:
+
+$$
+y = X \beta + \epsilon
+$$
+
+En este caso se usa regresión en donde el indicador de ingreso es la variable dependiente y el número de niños, de discapacitados, de adultos mayores, de personas de color, con deficiencias en inglés y enfermedades son las variables predictoras. 
+
+Cabe destacar que, en este caso, el problema de ignorar la estructura espacial de los datos implica que las estimaciones de MCO en el modelo no espacial pueden ser sesgadas, inconsistentes o ineficientes, dependiendo de cuál sea la verdadera dependencia subyacente.
+
+```{r,warning = F}
+bos.ols<-lm(crimes~POC2+Low_to_No+TotChild+TotDis+OlderAdult+LEP+MedIllnes+POP100_RE, data=bos.poly@data)
+anova(bos.ols)
+
+```
+
+Según el modelo lineal, las variables no significativas son: discapacitados, adultos mayores, personas de color y con enfermedades o padecimientos. Procedemos a eliminar dichas variables del modelo.
+
+```{r}
+bos.ols<-lm(crimes~POC2+TotChild+TotDis+OlderAdult+MedIllnes, data=bos.poly@data)
+anova(bos.ols)
+summary(bos.ols)
+plot(bos.ols)
+```
+
+## Modelando la dependencia espacial
+
+La autocorrelación espacial mide el grado en que un fenómeno de interés se correlaciona consigo mismo en el espacio. En otras palabras, los valores similares aparecen cerca uno del otro, o agrupados, en el espacio (autocorrelación espacial positiva) o los valores vecinos son diferentes (autocorrelación espacial negativa). La autocorrelación espacial nula indica que el patrón espacial es aleatorio. La existencia de autorrelación espacial se puede describir de la siguiente manera:
+
+$$
+\begin{equation}
+ Cov(y_{i},y_{j})\neq 0\,\,\,\,for\,\,\,\,i\neq j
+\end{equation}
+$$
+
+Donde yi e yj son observaciones de una variable aleatoria en las ubicaciones i y j. El problema aquí es que necesitamos estimar N por N términos de covarianza directamente para N observaciones. Para superar este problema, imponemos restricciones de la naturaleza de las interacciones. Un tipo de restricción es definir para cada punto de datos un "conjunto de vecindad" relevante. En la econometría espacial, esto se operacionaliza a través de la matriz de ponderaciones espaciales. La matriz generalmente denotada por W es una matriz simétrica positiva de N por N que denota para cada observación (fila) aquellas ubicaciones (columnas) que pertenecen a su conjunto de vecindad como elementos distintos de cero, el elemento típico es entonces:
+
+$$
+\begin{equation}
+[w_{ij}]=\begin{cases}
+1 & if\,j\in N\left(i\right)\\
+0 & o.w
+\end{cases}
+\end{equation}
+$$
+
+N(i) es el conjunto de vecinos en la ubicación j. Por convención, los elementos diagonales se establecen en cero, es decir, wii = 0. Para ayudar con la interpretación, la matriz a menudo está estandarizada por filas, de modo que los elementos de una fila dada suman uno.
+
+La especificación del conjunto vecino es bastante arbitraria y hay una amplia gama de sugerencias en la literatura.
+
+Otro enfoque utilizado es denotar dos observaciones como vecinas si están dentro de una cierta distancia, es decir, j∈N(j) si dij<dmax donde d es la distancia entre la ubicación i y j.
+
+Para este ejercicio se utiliza el criterio de reina. Para obtener la matriz de pesos se utiliza la función `poly2nb`. El siguiente paso es complementar la lista de vecinos con los pesos espaciales. 
+
+```{r}
+list.queen<-poly2nb(bos.poly, queen=T)
+list.torre<-poly2nb(bos.poly, queen=F)
+W<-nb2listw(list.queen, style="W", zero.policy=TRUE)
+print(W, zero.policy=TRUE)
+
+```
+
+Se puede trazar la distribución del enlace.
+
+```{r}
+plot(W,coordinates(bos.poly))
+```
+
+Para obtener la matriz de peso basada en distancias, se pueden usar dos funciones: `coordinates` que recuperara las coordenadas centroides de los polígonos de las secciones censales y `dnearneigh` que identifica vecinos entre dos distancias en kilómetros medidos usando la distancia euclidiana. Por ejemplo, para encontrar vecinos dentro de 1 kilómetro hacemos:
+
+```{r}
+coords<-coordinates(bos.poly)
+W_dist<-dnearneigh(coords,0,10,longlat = FALSE)
+W_dist
+```
+
+El número promedio de links para de vecinos es de 177. El 99% tiene links con al menos otros vecino.
+## Modelos espaciales autoregresivos (SAR)
+
+La dependencia del rezago espacial en un entorno de regresión puede modelarse de manera similar a un proceso autorregresivo en series de tiempo. De la forma:
+
+$$
+y= \rho Wy+ X \beta + \epsilon
+$$
+
+La presencia del término Wy induce una correlación distinta de cero con el término de error, similar a la presencia de una variable endógena, pero diferente del contexto de series de tiempo. Contrariamente a las series de tiempo, [Wy]i siempre está correlacionado con ϵi independientemente de la estructura de los errores. Esto implica que las estimaciones de MCO en el modelo no espacial serán sesgadas e inconsistentes.
+
+
+## Modelos de errores espaciales (SEM)
+
+Otra forma de modelar la autocorrelación espacial en un modelo de regresión es especificar el proceso autorregresivo en el término de error:
+
+$$
+y=  X \beta + \epsilon
+$$
+
+con:
+
+$$
+\epsilon = \lambda W \epsilon + u
+$$
+
+Si esta es la forma "verdadera" de dependencia espacial, las estimaciones de MCO serán imparciales pero ineficientes.
+
+# Probando la correlación espacial
+
+## Test I de Moran
+
+La prueba I de Moran se desarrolló originalmente como un análogo bidimensional de la prueba de Durbin-Watson
+
+$$
+\begin{equation}
+I = \left( \frac{e'We}{e'e}  \right)
+\end{equation}
+$$
+
+donde $$e=y-X \beta$$ es un vector de residuos de MCO $$\beta= (X'X)^{-1} X'y$$, $$W$$ es la matriz de ponderaciones espaciales estandarizadas por filas.
+
+Para realizar una prueba de Moran, necesitamos un objeto de regresión lm (estimado en la sección OLS) y la matriz de peso espacial.
+
+```{r}
+moran.lm<-lm.morantest(bos.ols, W, alternative="two.sided")
+print(moran.lm)
+```
+
+El cálculo de la estadística es relativo a la elección dada de los pesos espaciales W. Las diferentes especificaciones de la matriz de pesos darán resultados diferentes. La hipótesis nula establece que el atributo que se analiza está distribuido en forma aleatoria entre las entidades del área de estudio; es decir, los procesos espaciales que promueven el patrón de valores observado constituyen una opción aleatoria. En este caso, como el valor el valor p es estadísticamente significativo, por consecuente se puede rechazar la hipótesis nula. La distribución espacial de los valores altos y los valores bajos en el dataset está más agrupada espacialmente de lo que se esperaría si los procesos espaciales subyacentes fueran aleatorios.
+
+## Prueba de Multiplicadores de Lagrange
+
+Una buena característica de la prueba I de Moran es que tiene un alto poder frente a una amplia gama de alternativas. La prueba del multiplicador de Lagrange especifica la hipótesis alternativa de la presencia de un retraso espacial y la presencia de un retraso espacial en el término de error. Nuevamente, un objeto de regresión y un objeto espacial listw deben pasarse como argumentos:
+
+```{r}
+LM<-lm.LMtests(bos.ols, W, test="all")
+print(LM)
+```
+
+Dado que `LMerr` y `LMlag` no son estadísticamente significativos diferentes de cero, no se rechaza la no presencia de un retraso espacial en el término de error.
+
+# Regresiones espaciales
+
+## Modelo SAR
+
+La estimación del modelo SAR se puede abordar de dos maneras. Una forma es asumir la normalidad del término de error y utilizar máxima verosimilitud Esto se logra en R con la función `lagsarlm`.
+Una de las especificaciones de un SAR (Modelo espacial autorregresivo), donde la variable dependiente yi está asociada con la zona i y se modela como una función de las variables explicativas xij y la matriz de adyacencia, donde las "i" son variables aleatorias gaussianas independientes con media cero y varianza σ2 o en notación vectorial Y = Xβ + λWY + ε, donde ε es un vector gaussiano con media cero y matriz de varianza-covarianza. 
+El modelo de regresión estándar, cuenta con un término adicional (λWY) que permite que la variable predictora en zonas adyacentes a una zona dada tenga algún impacto. En este caso, como modelamos los ingresos, esto supone que, además de las características de una zona que afecta el nivel de ingresos en dicha zona, estos también se verían influenciados por los ingresos de las sujetos en áreas cercanas.
+
+## Modelos SEM
+
+Por otro lado, si queremos estimar el modelo de error espacial, tenemos dos enfoques nuevamente. Primero, podemos usar la máxima verosimilitud como antes, con la función `errorsarlm`.
+
+```{r,warning = F}
+sar.chi<-lagsarlm(crimes~POC2+TotChild+TotDis+OlderAdult+MedIllnes+Low_to_No, data=bos.poly@data, W)
+summary(sar.chi)
+```
+
+Eliminamos las variables no significativas
+
+```{r,warning = F}
+sar.chi<-lagsarlm(crimes~POC2+MedIllnes, data=bos.poly@data, W)
+summary(sar.chi)
+```
+
+
+#SAR - Modelo Error
+```{r,warning = F}
+#sar.err<-errorsarlm(scale(POC2)~scale(TotChild)+scale(TotDis)+scale(OlderAdult)+scale(Low_to_No)+scale(LEP)+scale(MedIllnes)+scale(POP100_RE), data=bos.poly@data, W, etype="error", method="MC")
+#summary(sar.err, Nagelkerke=T)
+```
+
+```{r,warning = F}
+sar.err<-errorsarlm(scale(crimes)~scale(POC2)+scale(MedIllnes), data=bos.poly@data, W, etype="error", method="MC")
+summary(sar.err, Nagelkerke=T)
+```
+
+## Modelo espacial Durbin
+
+```{r,warning = F}
+fit.durb<-lagsarlm(scale(crimes)~scale(POC2)+scale(TotChild)+scale(TotDis)+scale(OlderAdult)+scale(Low_to_No)+scale(LEP)+scale(MedIllnes)+scale(POP100_RE), data=bos.poly@data, W, type="mixed", method="MC")
+summary(fit.durb, Nagelkerke=T)
+```
+
+```{r,warning = F}
+fit.durb<-lagsarlm(scale(crimes)~scale(POC2)+scale(MedIllnes), data=bos.poly@data, W, type="mixed", method="MC")
+summary(fit.durb, Nagelkerke=T)
+```
+
+## Modelo espacial Durbin Error
+
+```{r,warning = F}
+# fit.errdurb<-errorsarlm(scale(POC2)~scale(TotChild)+scale(TotDis)+scale(OlderAdult)+scale(Low_to_No)+scale(LEP)+scale(MedIllnes)+scale(POP100_RE), data=bos.poly@data, W, etype="emixed", method="MC")
+# summary(fit.errdurb, Nagelkerke=T)
+```
+
+```{r,warning = F}
+fit.errdurb<-errorsarlm(scale(crimes)~scale(POC2)+scale(MedIllnes), data=bos.poly@data, W, etype="emixed", method="MC")
+summary(fit.errdurb, Nagelkerke=T)
+```
+Luego podemos comparar los residuos de los modelos ajustados
+
+```{r,warning = F}
+bos.poly@data$bos.ols.res<-resid(bos.ols) #residuos mco
+bos.poly@data$bos.sar.res<-resid(sar.chi) #residuos sar
+bos.poly@data$sar.err.res<-resid(sar.err) #residuos sat error
+bos.poly@data$fit.durb.res<-resid(fit.durb) #residuos durbin
+bos.poly@data$fit.errdurb.res<-resid(fit.errdurb) #residuos durbin
+```
+
+Se crearon 5 nuevas variables dentro del set de datos origial para facilitar la graficación de los residuos. Para esto, se usa la función `spplot` en el paquete `spdep.` 
+
+```{r}
+spplot(bos.poly,"bos.ols.res", at=seq(min(bos.poly@data$bos.ols.res,na.rm=TRUE),max(bos.poly@data$bos.ols.res,na.rm=TRUE),length=12),col.regions=rev(brewer.pal(11,"RdBu")),
+       main = "Residuos de regresión MCO")
+```
+
+```{r}
+spplot(bos.poly,"bos.sar.res",at=seq(min(bos.poly@data$bos.sar.res,na.rm=TRUE),max(bos.poly@data$bos.sar,na.rm=TRUE), length=12), col.regions=rev(brewer.pal(11,"RdBu")),
+       main = "Residuos de regresión SAR")
+
+```
+
+```{r}
+spplot(bos.poly,"sar.err.res", at=seq(min(bos.poly@data$sar.err.res,na.rm=TRUE),max(bos.poly@data$sar.err.res,na.rm=TRUE),length=12),col.regions=rev(brewer.pal(11,"RdBu")),
+       main = "Residuos modelo SAR Error")
+```
+
+```{r}
+spplot(bos.poly,"fit.durb.res", at=seq(min(bos.poly@data$fit.durb.res,na.rm=TRUE),max(bos.poly@data$fit.durb.res,na.rm=TRUE),length=12),col.regions=rev(brewer.pal(11,"RdBu")),
+       main = "Residuos modelo Durbin")
+```
+
+```{r}
+spplot(bos.poly,"fit.errdurb.res", at=seq(min(bos.poly@data$fit.errdurb.res,na.rm=TRUE),max(bos.poly@data$fit.errdurb.res,na.rm=TRUE),length=12),col.regions=rev(brewer.pal(11,"RdBu")),
+       main = "Residuos modelo Durbin Error")
+```
+
+A nivel general, con los modelos se obtienen resultados positivos y negativos de la corelacion de los errores. En el centro del mapa se observa mayor distribución de residuos negativos.
+
+### Comparación del ajuste
+
+```{r,warning = F}
+AICs<-c(AIC(bos.ols),AIC(sar.chi), AIC(sar.err), AIC(fit.durb), AIC(fit.errdurb))
+plot(AICs, type="l", lwd=1.5, xaxt="n", xlab="")
+axis(1, at=1:5,labels=F) #6= number of models
+labels<-c("OLS", "SAR","SAR Error", "Durbin","Durbin Error")
+text(1:5, par("usr")[3]-.25, srt=45, adj=1, labels=labels, xpd=T)
+mtext(side=1, text="Model Specification", line=3)
+symbols(x= which.min(AICs), y=AICs[which.min(AICs)], circles=1, fg=2,lwd=2,add=T)
+```
+
+```{r,warning = F}
+knitr::kable(data.frame(Models=labels, AIC=round(AICs, 2)))
+```
+
+El modelo de Durbin espacial se ajusta mejor a los datos, aunque el grado de diferencia entre él y el modelo SAR Error es pequeño. Se podría usar una prueba de razón de probabilidad:
+
+```{r,warning = F}
+anova(sar.err, fit.durb)
+anova(sar.err, fit.errdurb)
+```
+
+Los resultados de las pruebas muestran que no hay diferencias entre el modelo SAR error y cualquiera de los Durbin.
+
+### Efectos marginales
+
+Hay que tener en cuenta que la presencia de la matriz de pesos espaciales hace que los efectos marginales sean más grandes y un poco más complicados que en el modelo MCO "tradicional". Se tienen tres medidas de impacto sugeridas por Pace y LeSage (2009) y se realiza en R con la función `impacts`
+
+El impacto directo se refiere al impacto total promedio de un cambio de una variable independiente en la variable dependiente para cada observación, es decir, $$n^{-1}\sum_{i=1}^{n}\frac{\partial E(y_{i})}{\partial X_{i}}$$, el impacto indirecto que es la suma del impacto producido en una sola observación por todas las demás observaciones y el impacto de una observación en todas las demás. El total es la suma de los dos. La variable que tiene mayor impacto es el número de personas de color.
+
+##Impacto modelo SAR
+```{r,warning = F}
+im<-impacts(sar.chi, listw=W)
+im
+```
+
+##Impacto modelo DURBIN
+```{r,warning = F}
+im2<-impacts(fit.durb, listw=W) 
+im2
+```
+Para los dos modelos de los cuales se puede oitener el efecto del impacto, se observó que la variable de numero de personas con enfermedades fue la que tuvo un efecto mayor.
+
+## Conclusión
+
+La prueba de Moran indicó que el fenómeno está agrupado espacialmente. De los modelos comparados, el de Durbin fue el que arrojó medjores índices de ajuste, sin embargo, el SAR y error y el Durbin error también resultaron similares.
