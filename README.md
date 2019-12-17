@@ -23,6 +23,8 @@ El repositorio está compuesto por un archivo de Rmd (R markdown), usado para la
 
 - El archivos de R, disponibles en formato `.Rmd`, contienen los procedimientos usados para la limpieza de los datos y para replicar los resultados y el análisis presentados en el informe final y la presentación (`proyecto4.R`).
 - El archivo Word contiene el informe final (`Proyecto 4 - Miguel y Esteban.docx`)
+- El archivo PowerPoint con la presentacion final (`Ppresentacion.pptx`)
+- El video con la presentacion final (``)
 - La carpeta `datos` contiene los datos usados en el artículo. 
 
 ## Datos
@@ -31,8 +33,8 @@ El repositorio está compuesto por un archivo de Rmd (R markdown), usado para la
 
 Los datos usados en el análisis y contenidos en la carpeta `datos` provienen de:
 
-- [Boston Maps](http://bostonopendata-boston.opendata.arcgis.com/datasets/34f2c48b670d4b43a617b1540f20efe3_0)
-- [Boston Maps](https://data.boston.gov/dataset/crime-incident-reports-august-2015-to-date-source-new-system)
+- [Datos de vulnerabilidad social (Boston Maps)](http://bostonopendata-boston.opendata.arcgis.com/datasets/34f2c48b670d4b43a617b1540f20efe3_0)
+- [Datos de crimenes (Boston Maps)](https://data.boston.gov/dataset/crime-incident-reports-august-2015-to-date-source-new-system)
 
 
 ### Descripción del conjuntos de datos
